@@ -344,7 +344,7 @@ void show_mount_usb_storage_menu()
 {
     int fd;
     Volume *vol = volume_for_path("/sdcard");
-    if ((fd = open("/sys/devices/platform/usb_mass_storage/lun0/file",
+    if ((fd = open("/sys/devices/platform/s3c-usbgadget/gadget/lun1/file",
                    O_WRONLY)) < 0) {
         LOGE("Unable to open ums lunfile (%s)", strerror(errno));
         return -1;
@@ -371,7 +371,7 @@ void show_mount_usb_storage_menu()
             break;
     }
 
-    if ((fd = open("/sys/devices/platform/usb_mass_storage/lun0/file", O_WRONLY)) < 0) {
+    if ((fd = open("/sys/devices/platform/s3c-usbgadget/gadget/lun1/file", O_WRONLY)) < 0) {
         LOGE("Unable to open ums lunfile (%s)", strerror(errno));
         return -1;
     }
@@ -481,9 +481,10 @@ void show_partition_menu()
     };
 
     typedef char* string;
-    string mounts[][3] = {
+    string mounts[][4] = {
         { "mount /system", "unmount /system", "/system" },
         { "mount /data", "unmount /data", "/data" },
+	{ "mount /dbdata", "umount /dbdata", "/datadata" },
         { "mount /cache", "unmount /cache", "/cache" },
         { "mount /sdcard", "unmount /sdcard", "/sdcard" },
 #ifdef BOARD_HAS_SDCARD_INTERNAL
@@ -493,9 +494,9 @@ void show_partition_menu()
     };
 
     string devices[][2] = {
-        { "format boot", "/boot" },
         { "format system", "/system" },
         { "format data", "/data" },
+	{ "format dbdata", "/datadata" },
         { "format cache", "/cache" },
         { "format sdcard", "/sdcard" },
         { "format sd-ext", "/sd-ext" },
@@ -573,7 +574,7 @@ int extendedcommand_file_exists()
 
 int edify_main(int argc, char** argv) {
     load_volume_table();
-    process_volumes();
+    //process_volumes();
     RegisterBuiltins();
     RegisterRecoveryHooks();
     FinishRegistration();
@@ -807,6 +808,8 @@ void show_advanced_menu()
                             "Partition Internal SD Card",
 #endif
 #endif
+                            "Restart adbd",
+                            "Reboot to Download mode",
                             NULL
     };
 
@@ -954,10 +957,86 @@ void show_advanced_menu()
                     ui_print("An error occured while partitioning your Internal SD Card. Please see /tmp/recovery.log for more details.\n");
                 break;
             }
+            case 8:
+            {
+                __system("killall adbd");
+                break;
+            }
+            case 9:__reboot(LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, LINUX_REBOOT_CMD_RESTART2, "download");break;
+	    
         }
     }
 }
+void show_voodoo_menu() {
+  ensure_path_mounted("/sdcard");
+  static char* headers[] = {  "Voodoo lagfix menu",
+                              "",
+                              NULL
+  };
 
+  static char* list[] = { "disable lagfix",
+                          "enable  lagfix                   (default)",
+                          "/system lagfix on                (default)",
+                          "/system lagfix off",
+                          "debug off                        (default)",
+                          "debug on",
+                          NULL
+    };
+
+    for (;;)
+    {
+        FILE* f = fopen("/voodoo/run/lagfix_enabled","r");
+        if (f==NULL) {
+          ui_print("\nVoodoo lagfix is actually: disabled\n");
+        } else {
+          ui_print("\nVoodoo lagfix is actually: enabled\n");
+          fclose(f);
+        }
+
+	__system("/voodoo/bin/is_lagfix_config_enabled");
+        f = fopen("/voodoo/run/lagfix_config_enabled","r");
+        if (f==NULL) {
+          ui_print("                next boot: disabled\n");
+        } else {
+          ui_print("                next boot: enabled\n");
+          fclose(f);
+        }
+
+         ui_print("\nOptions:\n");
+
+	__system("/voodoo/bin/is_lagfix_system_conversion_enabled");
+        f = fopen("/voodoo/run/lagfix_system_conversion_enabled","r");
+        if (f==NULL) {
+          ui_print("\n/system lagfix conversion: no\n");
+        } else {
+          ui_print("\n/system lagfix conversion: yes\n");
+          fclose(f);
+        }
+
+	__system("/voodoo/bin/is_lagfix_debug_mode_enabled");
+        f = fopen("/voodoo/run/lagfix_debug_enabled","r");
+        if (f==NULL) {
+          ui_print("               debug mode: no\n");
+        } else {
+          fclose(f);
+          ui_print("               debug mode: yes\n");
+        }
+          ui_print("\n\n\n\n\n\n\n\n");
+
+            int chosen_item = get_menu_selection(headers, list, 0, 0);
+            if (chosen_item == GO_BACK)
+	    break;
+        switch (chosen_item)
+        {
+          case 0: __system("/voodoo/bin/disable_lagfix");break;
+          case 1: __system("/voodoo/bin/enable_lagfix");break;
+          case 2: __system("/voodoo/bin/unset_system_as_rfs");break;
+          case 3: __system("/voodoo/bin/set_system_as_rfs");break;
+          case 4: __system("/voodoo/bin/disable_debug_mode");break;
+          case 5: __system("/voodoo/bin/enable_debug_mode");break;
+        }
+    }
+}
 void write_fstab_root(char *path, FILE *file)
 {
     Volume *vol = volume_for_path(path);
@@ -1014,7 +1093,7 @@ int bml_check_volume(const char *path) {
     
     ui_print("%s may be rfs. Checking...\n", path);
     char tmp[PATH_MAX];
-    sprintf(tmp, "mount -t rfs %s %s", vol->device, path);
+    sprintf(tmp, "mount -t rfs -o check=no %s %s", vol->device, path);
     int ret = __system(tmp);
     printf("%d\n", ret);
     return ret == 0 ? 1 : 0;
@@ -1034,10 +1113,10 @@ void process_volumes() {
         ret |= bml_check_volume("/datadata");
     ret |= bml_check_volume("/cache");
     
-    if (ret == 0) {
-        ui_print("Done!\n");
+//    if (ret == 0) {
+//        ui_print("Done!\n");
         return;
-    }
+//    }
     
     char backup_path[PATH_MAX];
     time_t t = time(NULL);

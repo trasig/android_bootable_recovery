@@ -751,6 +751,9 @@ prompt_and_wait() {
             case ITEM_ADVANCED:
                 show_advanced_menu();
                 break;
+	    case VOODOO_TOGGLE:
+		show_voodoo_menu();
+		break;
         }
     }
 }
@@ -800,7 +803,7 @@ main(int argc, char **argv) {
     ui_init();
     ui_print(EXPAND(RECOVERY_VERSION)"\n");
     load_volume_table();
-    process_volumes();
+ //   process_volumes();
     LOGI("Processing arguments.\n");
     get_args(&argc, &argv);
 

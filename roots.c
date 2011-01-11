@@ -160,6 +160,12 @@ int ensure_path_mounted(const char* path) {
         LOGE("failed to mount %s (%s)\n", v->mount_point, strerror(errno));
         return -1;
     } else {
+	if (strcmp(v->fs_type, "rfs") == 0) {
+        	char mount_cmd[PATH_MAX];
+		sprintf(mount_cmd, "mount -t rfs -o check=no %s %s", v->device, v->mount_point);
+   	    	return __system(mount_cmd);
+                LOGE("GAY RFS");
+	}
         // let's try mounting with the mount binary and hope for the best.
         char mount_cmd[PATH_MAX];
         sprintf(mount_cmd, "mount %s", path);
